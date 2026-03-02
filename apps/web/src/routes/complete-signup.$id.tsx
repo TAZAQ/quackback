@@ -36,7 +36,7 @@ const FEATURES = [
   { icon: MapIcon, label: 'Roadmap & changelog' },
 ] as const
 
-interface InviteBranding {
+export interface InviteBranding {
   workspaceName: string
   logoUrl: string | null
   inviterName: string | null
