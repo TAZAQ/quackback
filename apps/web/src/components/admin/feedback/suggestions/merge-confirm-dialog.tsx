@@ -1,5 +1,4 @@
-import { ArrowDownIcon } from '@heroicons/react/16/solid'
-import { ChevronUpIcon } from '@heroicons/react/24/solid'
+import { ChatBubbleLeftIcon, ChevronUpIcon } from '@heroicons/react/24/solid'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,18 +12,9 @@ import {
 import { StatusBadge } from '@/components/ui/status-badge'
 import type { MergePreview } from './merge-preview'
 
-interface PostCardData {
-  title: string
-  voteCount: number
-  statusName?: string | null
-  statusColor?: string | null
-}
-
 interface MergeConfirmDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  duplicatePost: PostCardData
-  canonicalPost: PostCardData
   preview: MergePreview
   onConfirm: () => void
   isPending: boolean
@@ -33,8 +23,6 @@ interface MergeConfirmDialogProps {
 export function MergeConfirmDialog({
   open,
   onOpenChange,
-  duplicatePost,
-  canonicalPost,
   preview,
   onConfirm,
   isPending,
@@ -43,33 +31,44 @@ export function MergeConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Consolidate these posts?</AlertDialogTitle>
+          <AlertDialogTitle>Consolidate into this post?</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
               <p>
-                All votes and comments from the duplicate will be transferred
-                to the kept post. Voters will only be counted once.
+                Votes and comments will be combined. Voters are only counted once.
               </p>
 
-              {/* Direction visual — compact post cards stacked vertically */}
-              <div className="space-y-1.5">
-                <CompactPostCard post={duplicatePost} label="Duplicate" />
-                <div className="flex items-center gap-1.5 pl-2 text-muted-foreground/50">
-                  <ArrowDownIcon className="h-3 w-3 shrink-0" />
-                  <span className="text-[11px]">folds into</span>
+              {/* Consolidated result card */}
+              <div className="flex items-start gap-2.5 rounded-md border border-border/60 bg-muted/30 px-3 py-2.5">
+                <div className="flex flex-col items-center shrink-0 rounded border border-border/50 bg-muted/40 px-1.5 py-1 gap-0">
+                  <ChevronUpIcon className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs font-semibold tabular-nums text-foreground">
+                    ~{preview.voteCount}
+                  </span>
                 </div>
-                <CompactPostCard post={canonicalPost} label="Kept" />
+                <div className="flex-1 min-w-0">
+                  {preview.statusName && (
+                    <div className="mb-0.5">
+                      <StatusBadge
+                        name={preview.statusName}
+                        color={preview.statusColor}
+                        className="text-[10px]"
+                      />
+                    </div>
+                  )}
+                  <p className="text-sm font-medium text-foreground line-clamp-2">
+                    {preview.title}
+                  </p>
+                  <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-1">
+                    <ChatBubbleLeftIcon className="h-3 w-3" />
+                    <span>{preview.commentCount} comments</span>
+                  </div>
+                </div>
               </div>
 
-              {/* What happens list */}
-              <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
-                <li>
-                  The kept post will have ~{preview.voteCount} votes and{' '}
-                  {preview.commentCount} comments after consolidation
-                </li>
-                <li>The duplicate will redirect to the kept post for voters</li>
-                <li>You can undo this anytime from the post detail page</li>
-              </ul>
+              <p className="text-xs text-muted-foreground">
+                The duplicate will redirect here for existing voters. You can undo this anytime.
+              </p>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -81,44 +80,5 @@ export function MergeConfirmDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  )
-}
-
-/** Extra-compact post card for use inside the dialog — vote count + status + title only. */
-function CompactPostCard({
-  post,
-  label,
-}: {
-  post: PostCardData
-  label?: string
-}) {
-  return (
-    <div className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/30 px-2 py-1.5">
-      <div className="flex flex-col items-center shrink-0 rounded border border-border/50 bg-muted/40 px-1 py-0.5 gap-0">
-        <ChevronUpIcon className="h-2.5 w-2.5 text-muted-foreground" />
-        <span className="text-[11px] font-semibold tabular-nums text-foreground">
-          {post.voteCount}
-        </span>
-      </div>
-      <div className="flex-1 min-w-0">
-        {(label || post.statusName) && (
-          <div className="flex items-center gap-1.5 mb-0.5">
-            {label && (
-              <span className="text-[10px] font-medium px-1.5 py-0 rounded-sm bg-muted text-muted-foreground/70">
-                {label}
-              </span>
-            )}
-            {post.statusName && (
-              <StatusBadge
-                name={post.statusName}
-                color={post.statusColor}
-                className="text-[10px]"
-              />
-            )}
-          </div>
-        )}
-        <p className="text-sm font-medium text-foreground line-clamp-2">{post.title}</p>
-      </div>
-    </div>
   )
 }

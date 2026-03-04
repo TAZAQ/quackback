@@ -202,12 +202,10 @@ function DuplicateRow({
       </div>
 
       {/* Merge confirmation dialog */}
-      {duplicatePost && canonicalPost && preview && (
+      {preview && (
         <MergeConfirmDialog
           open={showConfirmDialog}
           onOpenChange={setShowConfirmDialog}
-          duplicatePost={duplicatePost}
-          canonicalPost={canonicalPost}
           preview={preview}
           onConfirm={() => mergeMutation.mutate(swapped ? { swapDirection: true } : undefined)}
           isPending={isPending}
