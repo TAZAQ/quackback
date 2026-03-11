@@ -1,7 +1,7 @@
 /**
  * Signal embedding service.
  *
- * Embeds signal summary + implicitNeed using text-embedding-3-small.
+ * Embeds signals in a format mirroring post embeddings (formatPostText) for accurate similarity.
  * Provides similarity search against post embeddings for suggestion generation.
  */
 
@@ -23,14 +23,25 @@ export async function embedSignal(
 ): Promise<number[] | null> {
   const signal = await db.query.feedbackSignals.findFirst({
     where: eq(feedbackSignals.id, signalId),
-    columns: { summary: true, implicitNeed: true },
+    columns: { summary: true, implicitNeed: true, evidence: true },
   })
 
   if (!signal) {
     throw new UnrecoverableError(`Signal ${signalId} not found`)
   }
 
-  const textToEmbed = [signal.summary, signal.implicitNeed].filter(Boolean).join(' - ')
+  // Mirror the post embedding format (formatPostText) for accurate cosine similarity:
+  //   Posts embed as: title \n\n title \n\n content \n\n Tags: ...
+  // So signals embed as: summary \n\n summary \n\n implicitNeed \n\n evidence...
+  //
+  // - Summary repeated for title-weight parity with posts
+  // - \n\n separator matches formatPostText
+  // - Evidence quotes (original customer words) bridge vocabulary gap
+  //   between abstract LLM summaries and natural post content
+  const evidence = (signal.evidence as string[] | null) ?? []
+  const textToEmbed = [signal.summary, signal.summary, signal.implicitNeed, ...evidence]
+    .filter(Boolean)
+    .join('\n\n')
   if (!textToEmbed.trim()) return null
 
   const embedding = await generateEmbedding(textToEmbed, {

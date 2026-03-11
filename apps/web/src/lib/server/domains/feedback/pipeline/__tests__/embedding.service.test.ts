@@ -79,7 +79,7 @@ describe('embedding.service', () => {
 
       expect(result).toEqual(mockEmbedding)
       expect(mockGenerateEmbedding).toHaveBeenCalledWith(
-        'Users want CSV export - Data portability',
+        'Users want CSV export\n\nUsers want CSV export\n\nData portability',
         expect.objectContaining({ pipelineStep: 'signal_embedding', signalId })
       )
       // Should update DB with embedding
