@@ -9,7 +9,12 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { setWidgetToken, getWidgetToken, clearWidgetToken } from '@/lib/client/widget-auth'
+import {
+  setWidgetToken,
+  getWidgetToken,
+  clearWidgetToken,
+  getWidgetAuthHeaders,
+} from '@/lib/client/widget-auth'
 import { authClient } from '@/lib/server/auth/client'
 
 interface WidgetUser {
@@ -39,17 +44,52 @@ export function WidgetAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<WidgetUser | null>(null)
   const isIdentified = user !== null
   const sessionReadyRef = useRef(false)
+  const tokenRef = useRef<string | null>(null)
 
-  // On mount, check if we already have a stored token on the widget origin.
+  // On mount, restore the current widget session from the widget origin.
   useEffect(() => {
-    if (getWidgetToken()) {
-      sessionReadyRef.current = true
+    const token = getWidgetToken()
+    tokenRef.current = token
+    if (!token) return
+
+    sessionReadyRef.current = true
+
+    let active = true
+    void (async () => {
+      try {
+        const response = await fetch('/api/widget/session', {
+          headers: getWidgetAuthHeaders(),
+          cache: 'no-store',
+        })
+
+        if (!active || tokenRef.current !== token) return
+
+        if (response.status === 401 || response.status === 403) {
+          clearWidgetToken()
+          tokenRef.current = null
+          sessionReadyRef.current = false
+          setUser(null)
+          return
+        }
+
+        if (!response.ok) return
+
+        const result = (await response.json()) as { data?: { user?: WidgetUser | null } }
+        setUser(result.data?.user ?? null)
+      } catch {
+        // Keep the stored token and try again on the next widget load.
+      }
+    })()
+
+    return () => {
+      active = false
     }
   }, [])
 
   /** Store the widget session token on the widget origin. */
   const storeToken = useCallback((token: string) => {
     setWidgetToken(token)
+    tokenRef.current = token
     sessionReadyRef.current = true
   }, [])
 
@@ -137,6 +177,7 @@ export function WidgetAuthProvider({ children }: { children: ReactNode }) {
       if (msg.type === 'quackback:identify') {
         if (msg.data === null) {
           clearWidgetToken()
+          tokenRef.current = null
           sessionReadyRef.current = false
           setUser(null)
           window.parent.postMessage(

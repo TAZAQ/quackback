@@ -10,7 +10,7 @@
  * Used by AuthVoteButton, PostCard, and AuthCommentsSection.
  */
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useRouter, useRouteContext } from '@tanstack/react-router'
 import { authClient } from '@/lib/server/auth/client'
 
@@ -18,6 +18,10 @@ export function useEnsureAnonSession(): () => Promise<boolean> {
   const router = useRouter()
   const { session } = useRouteContext({ from: '__root__' })
   const hasSessionRef = useRef(!!session?.user)
+
+  useEffect(() => {
+    hasSessionRef.current = !!session?.user
+  }, [session?.user])
 
   return useCallback(async (): Promise<boolean> => {
     if (hasSessionRef.current) return true

@@ -18,6 +18,7 @@ import { useCreatePublicPost } from '@/lib/client/mutations/portal-posts'
 import { useAuthPopover } from '@/components/auth/auth-popover-context'
 import { useAuthBroadcast } from '@/lib/client/hooks/use-auth-broadcast'
 import { useSimilarPosts } from '@/lib/client/hooks/use-similar-posts'
+import { useEnsureAnonSession } from '@/lib/client/hooks/use-ensure-anon-session'
 import { SimilarPostsCard } from '@/components/public/similar-posts-card'
 import { signOut } from '@/lib/server/auth/client'
 import type { JSONContent } from '@tiptap/react'
@@ -43,18 +44,23 @@ export function FeedbackHeader({
   onPostCreated,
 }: FeedbackHeaderProps) {
   const router = useRouter()
-  const { session } = useRouteContext({ from: '__root__' })
+  const { session, settings } = useRouteContext({ from: '__root__' })
   const [expanded, setExpanded] = useState(false)
   const [error, setError] = useState('')
   const { openAuthPopover } = useAuthPopover()
 
   const createPost = useCreatePublicPost()
+  const ensureAnonSession = useEnsureAnonSession()
+  const anonymousPostingEnabled = settings?.publicPortalConfig?.features?.anonymousPosting ?? false
 
-  // Get user from session (anonymous sessions can vote but can't create posts)
+  // Identified users post as themselves; anonymous posting is handled separately.
+  const isAnonymousSession = session?.user?.isAnonymous ?? false
   const effectiveUser =
-    session?.user && !session.user.isAnonymous
+    session?.user && !isAnonymousSession
       ? { name: session.user.name, email: session.user.email }
       : user
+  const canPostAnonymously = anonymousPostingEnabled && (!session?.user || isAnonymousSession)
+  const canSubmit = !!effectiveUser || anonymousPostingEnabled
 
   // Listen for auth success to refetch session (no page reload)
   useAuthBroadcast({
@@ -113,7 +119,20 @@ export function FeedbackHeader({
 
     const plainText = contentJson ? richTextToPlainText(contentJson) : ''
 
+    if (!effectiveUser && !anonymousPostingEnabled) {
+      setError('Please sign in to submit feedback')
+      return
+    }
+
     try {
+      if (!effectiveUser && anonymousPostingEnabled) {
+        const ok = await ensureAnonSession()
+        if (!ok) {
+          setError('Failed to create session')
+          return
+        }
+      }
+
       const result = await createPost.mutateAsync({
         boardId: selectedBoardId as BoardId,
         title: title.trim(),
@@ -307,6 +326,8 @@ export function FeedbackHeader({
                   </button>
                   {')'}
                 </p>
+              ) : canPostAnonymously ? (
+                <p className="text-xs text-muted-foreground">Posting anonymously</p>
               ) : (
                 <button
                   type="button"
@@ -329,8 +350,8 @@ export function FeedbackHeader({
                 <Button
                   size="sm"
                   onClick={handleSubmit}
-                  disabled={createPost.isPending || !effectiveUser}
-                  title={!effectiveUser ? 'Please sign in to submit feedback' : undefined}
+                  disabled={createPost.isPending || !canSubmit}
+                  title={!canSubmit ? 'Please sign in to submit feedback' : undefined}
                   className="portal-submit-button bg-[var(--portal-button-background)] text-[var(--portal-button-foreground)] hover:bg-[var(--portal-button-background)]/90"
                 >
                   {createPost.isPending ? 'Submitting...' : 'Submit'}

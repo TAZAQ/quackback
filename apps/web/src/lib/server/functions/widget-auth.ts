@@ -20,6 +20,7 @@ export interface WidgetAuthContext {
   principal: {
     id: PrincipalId
     role: Role
+    type: string
   }
 }
 
@@ -81,6 +82,7 @@ export async function getWidgetSession(): Promise<WidgetAuthContext | null> {
       principal: {
         id: principalRecord.id as PrincipalId,
         role: principalRecord.role as Role,
+        type: principalRecord.type ?? 'user',
       },
     }
   } catch (error) {
