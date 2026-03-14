@@ -1,17 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  ChevronUpIcon,
-  MagnifyingGlassIcon,
-  Squares2X2Icon,
-  XMarkIcon,
-} from '@heroicons/react/24/solid'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { MagnifyingGlassIcon, Squares2X2Icon, XMarkIcon } from '@heroicons/react/24/solid'
 import { LightBulbIcon } from '@heroicons/react/24/outline'
 import { cn } from '@/lib/shared/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { authClient } from '@/lib/server/auth/client'
+import { WidgetVoteButton } from './widget-vote-button'
 import { useWidgetAuth } from './widget-auth-provider'
+import type { PostId } from '@quackback/ids'
 
 interface WidgetPost {
   id: string
@@ -44,6 +40,8 @@ interface WidgetHomeProps {
   selectedBoardSlug: string | undefined
   onBoardChange: (slug: string | undefined) => void
   onSubmitNew: (title: string) => void
+  onPostSelect?: (postId: string) => void
+  anonymousVotingEnabled?: boolean
 }
 
 interface SearchResult {
@@ -61,21 +59,16 @@ export function WidgetHome({
   selectedBoardSlug,
   onBoardChange,
   onSubmitNew,
+  onPostSelect,
+  anonymousVotingEnabled = true,
 }: WidgetHomeProps) {
-  const { isIdentified, widgetFetch, closeWidget } = useWidgetAuth()
+  const { closeWidget, ensureSession } = useWidgetAuth()
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Search state
   const [searchResults, setSearchResults] = useState<SearchResult | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
-
-  // Vote state
-  const [votedPostIds, setVotedPostIds] = useState<Set<string>>(new Set())
-  const [pendingVotes, setPendingVotes] = useState<Set<string>>(new Set())
-  const [voteCountOverrides, setVoteCountOverrides] = useState<Map<string, number>>(new Map())
-  const [authPromptPostId, setAuthPromptPostId] = useState<string | null>(null)
-  const [hasAnonSession, setHasAnonSession] = useState(false)
 
   // Board dropdown state
   const [boardOpen, setBoardOpen] = useState(false)
@@ -87,31 +80,6 @@ export function WidgetHome({
     const timer = setTimeout(() => inputRef.current?.focus(), 100)
     return () => clearTimeout(timer)
   }, [])
-
-  // Fetch voted post IDs (for identified users and anonymous sessions)
-  useEffect(() => {
-    if (!isIdentified && !hasAnonSession) {
-      setVotedPostIds(new Set())
-      return
-    }
-
-    let cancelled = false
-    // For identified users, use widgetFetch (sends Bearer token)
-    // For anonymous sessions, use regular fetch (sends session cookie)
-    const fetchFn = isIdentified ? widgetFetch : fetch
-    fetchFn('/api/widget/voted-posts')
-      .then((res) => res.json())
-      .then((json) => {
-        if (!cancelled && json.data?.votedPostIds) {
-          setVotedPostIds(new Set(json.data.votedPostIds))
-        }
-      })
-      .catch(() => {})
-
-    return () => {
-      cancelled = true
-    }
-  }, [isIdentified, hasAnonSession, widgetFetch])
 
   // Debounced search
   useEffect(() => {
@@ -154,132 +122,12 @@ export function WidgetHome({
     }
   }, [searchQuery, selectedBoardSlug])
 
-  const handleVote = useCallback(
-    async (postId: string) => {
-      if (pendingVotes.has(postId)) return
-
-      // If not identified and no anonymous session, create anonymous session first
-      if (!isIdentified && !hasAnonSession) {
-        setPendingVotes((prev) => new Set(prev).add(postId))
-        try {
-          const result = await authClient.signIn.anonymous()
-          if (result.error) {
-            console.error('[widget] Anonymous sign-in failed:', result.error)
-            setAuthPromptPostId(postId)
-            setTimeout(() => setAuthPromptPostId(null), 3000)
-            setPendingVotes((prev) => {
-              const next = new Set(prev)
-              next.delete(postId)
-              return next
-            })
-            return
-          }
-          setHasAnonSession(true)
-          // Let the browser commit the session cookie
-          await new Promise((r) => setTimeout(r, 0))
-          // Remove from pending so the vote logic below can re-add it
-          setPendingVotes((prev) => {
-            const next = new Set(prev)
-            next.delete(postId)
-            return next
-          })
-        } catch {
-          setAuthPromptPostId(postId)
-          setTimeout(() => setAuthPromptPostId(null), 3000)
-          setPendingVotes((prev) => {
-            const next = new Set(prev)
-            next.delete(postId)
-            return next
-          })
-          return
-        }
-      }
-
-      const wasVoted = votedPostIds.has(postId)
-      const delta = wasVoted ? -1 : 1
-
-      // Optimistic update
-      setPendingVotes((prev) => new Set(prev).add(postId))
-      setVotedPostIds((prev) => {
-        const next = new Set(prev)
-        if (wasVoted) next.delete(postId)
-        else next.add(postId)
-        return next
-      })
-      setVoteCountOverrides((prev) => {
-        const next = new Map(prev)
-        const current = next.get(postId) ?? getPostVoteCount(postId)
-        next.set(postId, current + delta)
-        return next
-      })
-
-      try {
-        // For identified users, use widgetFetch (sends Bearer token)
-        // For anonymous sessions, use regular fetch (sends session cookie)
-        const voteFn = isIdentified ? widgetFetch : fetch
-        const res = await voteFn('/api/widget/vote', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ postId }),
-        })
-        if (!res.ok) throw new Error(`Vote failed: ${res.status}`)
-        const json = await res.json()
-        if (json.data) {
-          setVoteCountOverrides((prev) => {
-            const next = new Map(prev)
-            next.set(postId, json.data.voteCount)
-            return next
-          })
-          setVotedPostIds((prev) => {
-            const next = new Set(prev)
-            if (json.data.voted) next.add(postId)
-            else next.delete(postId)
-            return next
-          })
-        }
-      } catch {
-        // Revert
-        setVotedPostIds((prev) => {
-          const next = new Set(prev)
-          if (wasVoted) next.add(postId)
-          else next.delete(postId)
-          return next
-        })
-        setVoteCountOverrides((prev) => {
-          const next = new Map(prev)
-          const current = next.get(postId) ?? getPostVoteCount(postId)
-          next.set(postId, current - delta)
-          return next
-        })
-      } finally {
-        setPendingVotes((prev) => {
-          const next = new Set(prev)
-          next.delete(postId)
-          return next
-        })
-      }
-    },
-    [isIdentified, hasAnonSession, widgetFetch, votedPostIds, pendingVotes]
-  )
-
-  function getPostVoteCount(postId: string): number {
-    if (voteCountOverrides.has(postId)) return voteCountOverrides.get(postId)!
-    const fromInitial = initialPosts.find((p) => p.id === postId)
-    if (fromInitial) return fromInitial.voteCount
-    const fromSearch = searchResults?.posts.find((p) => p.id === postId)
-    return fromSearch?.voteCount ?? 0
-  }
-
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape') {
       if (searchQuery) {
-        // Clear search first — stop propagation so the shell's global
-        // Escape handler doesn't also close the widget
         e.nativeEvent.stopImmediatePropagation()
         onSearchQueryChange('')
       }
-      // If no search query, let it bubble to the shell's global handler
-      // which will close the widget
     }
     if (e.key === 'Enter' && searchQuery.trim()) {
       const hasResults = searchResults && searchResults.posts.length > 0
@@ -416,70 +264,44 @@ export function WidgetHome({
           <div className="space-y-1">
             {displayPosts.map((post) => {
               const status = post.statusId ? (statusMap.get(post.statusId) ?? null) : null
-              const voteCount = voteCountOverrides.get(post.id) ?? post.voteCount
-              const hasVoted = votedPostIds.has(post.id)
-              const isPending = pendingVotes.has(post.id)
 
               return (
-                <div key={post.id}>
-                  <div className="flex items-center gap-2 rounded-lg hover:bg-muted/30 transition-colors px-2 py-1.5">
-                    {/* Vote button */}
-                    <button
-                      type="button"
-                      onClick={() => handleVote(post.id)}
-                      disabled={isPending}
-                      aria-label={hasVoted ? `Remove vote (${voteCount})` : `Vote (${voteCount})`}
-                      aria-pressed={hasVoted}
-                      className={cn(
-                        'flex flex-col items-center justify-center shrink-0 w-10 h-10 rounded-md border transition-all duration-200',
-                        hasVoted
-                          ? 'text-post-card-voted border-post-card-voted/60 bg-post-card-voted/15'
-                          : 'bg-muted/30 text-muted-foreground border-border/50 hover:bg-muted/50 hover:border-border',
-                        isPending && 'opacity-70 cursor-wait'
-                      )}
-                    >
-                      <ChevronUpIcon
-                        className={cn('h-3.5 w-3.5', hasVoted && 'text-post-card-voted')}
-                      />
-                      <span
-                        className={cn(
-                          'text-xs font-semibold tabular-nums leading-none',
-                          hasVoted ? 'text-post-card-voted' : 'text-foreground'
-                        )}
-                      >
-                        {voteCount}
-                      </span>
-                    </button>
+                <div
+                  key={post.id}
+                  className="flex items-center gap-2 rounded-lg hover:bg-muted/30 transition-colors px-2 py-1.5 cursor-pointer"
+                  onClick={() => onPostSelect?.(post.id)}
+                >
+                  <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                    <WidgetVoteButton
+                      postId={post.id as PostId}
+                      voteCount={post.voteCount}
+                      onBeforeVote={anonymousVotingEnabled ? ensureSession : undefined}
+                    />
+                  </div>
 
-                    {/* Post info */}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-medium text-foreground line-clamp-1">
-                        {post.title}
-                      </h3>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        {status && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                            <span
-                              className="size-1.5 rounded-full shrink-0"
-                              style={{ backgroundColor: status.color }}
-                            />
-                            {status.name}
-                          </span>
-                        )}
-                        {post.board && !selectedBoardSlug && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/60">
-                            <Squares2X2Icon className="h-2.5 w-2.5 text-muted-foreground/40" />
-                            {post.board.name}
-                          </span>
-                        )}
-                      </div>
+                  {/* Post info */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-medium text-foreground line-clamp-1">
+                      {post.title}
+                    </h3>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {status && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                          <span
+                            className="size-1.5 rounded-full shrink-0"
+                            style={{ backgroundColor: status.color }}
+                          />
+                          {status.name}
+                        </span>
+                      )}
+                      {post.board && !selectedBoardSlug && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/60">
+                          <Squares2X2Icon className="h-2.5 w-2.5 text-muted-foreground/40" />
+                          {post.board.name}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  {authPromptPostId === post.id && (
-                    <p className="text-[11px] text-muted-foreground ml-14 -mt-0.5 mb-1 animate-in fade-in">
-                      Unable to vote right now, please try again
-                    </p>
-                  )}
                 </div>
               )
             })}
