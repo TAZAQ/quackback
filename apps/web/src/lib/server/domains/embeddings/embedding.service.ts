@@ -69,7 +69,10 @@ export async function generateEmbedding(
     )
     return response.data[0]?.embedding ?? null
   } catch (error) {
-    console.error('[Embedding] OpenAI failed:', error)
+    console.error(
+      `[Embedding] OpenAI failed for ${logContext?.pipelineStep ?? 'unknown'} (post=${logContext?.postId ?? 'n/a'}):`,
+      error
+    )
     return null
   }
 }

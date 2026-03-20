@@ -202,7 +202,6 @@ export async function deleteStatus(id: StatusId): Promise<void> {
  * Get a status by ID
  */
 export async function getStatusById(id: StatusId): Promise<Status> {
-  console.log(`[domain:statuses] getStatusById: id=${id}`)
   const status = await db.query.postStatuses.findFirst({
     where: eq(postStatuses.id, id),
   })
@@ -217,7 +216,6 @@ export async function getStatusById(id: StatusId): Promise<Status> {
  * List all statuses for the organization (excludes soft-deleted)
  */
 export async function listStatuses(): Promise<Status[]> {
-  console.log(`[domain:statuses] listStatuses`)
   const statuses = await db.query.postStatuses.findMany({
     where: isNull(postStatuses.deletedAt),
     orderBy: [
@@ -290,7 +288,6 @@ export async function setDefaultStatus(id: StatusId): Promise<Status> {
  * Get the default status for new posts
  */
 export async function getDefaultStatus(): Promise<Status | null> {
-  console.log(`[domain:statuses] getDefaultStatus`)
   const defaultStatus = await db.query.postStatuses.findFirst({
     where: eq(postStatuses.isDefault, true),
   })
@@ -302,7 +299,6 @@ export async function getDefaultStatus(): Promise<Status | null> {
  * Get a status by slug
  */
 export async function getStatusBySlug(slug: string): Promise<Status> {
-  console.log(`[domain:statuses] getStatusBySlug: slug=${slug}`)
   const status = await db.query.postStatuses.findFirst({
     where: eq(postStatuses.slug, slug),
   })
@@ -317,7 +313,6 @@ export async function getStatusBySlug(slug: string): Promise<Status> {
  * List all statuses (public, no authentication required).
  */
 export async function listPublicStatuses(): Promise<Status[]> {
-  console.log(`[domain:statuses] listPublicStatuses`)
   try {
     return await db.query.postStatuses.findMany({
       where: isNull(postStatuses.deletedAt),

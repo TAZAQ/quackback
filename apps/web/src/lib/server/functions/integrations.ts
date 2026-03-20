@@ -11,6 +11,7 @@ import {
   sql,
 } from '@/lib/server/db'
 import type { IntegrationId, BoardId } from '@quackback/ids'
+import { cacheDel, CACHE_KEYS } from '@/lib/server/redis'
 
 // ============================================
 // Schemas
@@ -101,6 +102,7 @@ export const updateIntegrationFn = createServerFn({ method: 'POST' })
         })
     }
 
+    await cacheDel(CACHE_KEYS.INTEGRATION_MAPPINGS)
     console.log(`[fn:integrations] updateIntegrationFn: updated id=${data.id}`)
     return { success: true }
   })
@@ -153,6 +155,7 @@ export const deleteIntegrationFn = createServerFn({ method: 'POST' })
 
     await db.delete(integrations).where(eq(integrations.id, integrationId))
 
+    await cacheDel(CACHE_KEYS.INTEGRATION_MAPPINGS)
     console.log(`[fn:integrations] deleteIntegrationFn: deleted id=${data.id}`)
     return { id: data.id }
   })
@@ -229,6 +232,7 @@ export const addNotificationChannelFn = createServerFn({ method: 'POST' })
         },
       })
 
+    await cacheDel(CACHE_KEYS.INTEGRATION_MAPPINGS)
     console.log(`[fn:integrations] addNotificationChannelFn: added ${data.events.length} mappings`)
     return { success: true }
   })
@@ -284,6 +288,7 @@ export const updateNotificationChannelFn = createServerFn({ method: 'POST' })
         )
       )
 
+    await cacheDel(CACHE_KEYS.INTEGRATION_MAPPINGS)
     console.log(`[fn:integrations] updateNotificationChannelFn: updated`)
     return { success: true }
   })
@@ -308,6 +313,7 @@ export const removeNotificationChannelFn = createServerFn({ method: 'POST' })
         )
       )
 
+    await cacheDel(CACHE_KEYS.INTEGRATION_MAPPINGS)
     console.log(`[fn:integrations] removeNotificationChannelFn: removed`)
     return { success: true }
   })

@@ -24,6 +24,7 @@ import {
   type Subscriber,
   type NotificationEventType,
 } from '@/lib/server/domains/subscriptions/subscription.service'
+import { cacheGet, cacheSet, CACHE_KEYS } from '@/lib/server/redis'
 import type { HookTarget } from './hook-types'
 import { stripHtml, truncate } from './hook-utils'
 import { buildHookContext, type HookContext } from './hook-context'
@@ -117,6 +118,40 @@ export async function getHookTargets(event: EventData): Promise<HookTarget[]> {
   }
 }
 
+type CachedIntegrationMapping = {
+  eventType: string
+  integrationType: string
+  secrets: string | null
+  integrationConfig: unknown
+  actionConfig: unknown
+  filters: unknown
+}
+
+async function getCachedIntegrationMappings(): Promise<CachedIntegrationMapping[]> {
+  const cached = await cacheGet<CachedIntegrationMapping[]>(CACHE_KEYS.INTEGRATION_MAPPINGS)
+  if (cached) {
+    console.log(`[Targets] Integration mappings: cache hit (${cached.length} mappings)`)
+    return cached
+  }
+
+  const mappings = await db
+    .select({
+      eventType: integrationEventMappings.eventType,
+      integrationType: integrations.integrationType,
+      secrets: integrations.secrets,
+      integrationConfig: integrations.config,
+      actionConfig: integrationEventMappings.actionConfig,
+      filters: integrationEventMappings.filters,
+    })
+    .from(integrationEventMappings)
+    .innerJoin(integrations, eq(integrationEventMappings.integrationId, integrations.id))
+    .where(and(eq(integrationEventMappings.enabled, true), eq(integrations.status, 'active')))
+
+  console.log(`[Targets] Integration mappings: cache miss, fetched ${mappings.length} from DB`)
+  await cacheSet(CACHE_KEYS.INTEGRATION_MAPPINGS, mappings, 300)
+  return mappings
+}
+
 /**
  * Get integration hook targets (Slack, Discord, etc.).
  */
@@ -134,24 +169,9 @@ async function getIntegrationTargets(
     return []
   }
 
-  // Single query: get active, enabled mappings with integration data
-  const mappings = await db
-    .select({
-      integrationType: integrations.integrationType,
-      secrets: integrations.secrets,
-      integrationConfig: integrations.config,
-      actionConfig: integrationEventMappings.actionConfig,
-      filters: integrationEventMappings.filters,
-    })
-    .from(integrationEventMappings)
-    .innerJoin(integrations, eq(integrationEventMappings.integrationId, integrations.id))
-    .where(
-      and(
-        eq(integrationEventMappings.eventType, event.type),
-        eq(integrationEventMappings.enabled, true),
-        eq(integrations.status, 'active')
-      )
-    )
+  // Get all active mappings from cache or DB, then filter by event type
+  const allMappings = await getCachedIntegrationMappings()
+  const mappings = allMappings.filter((m) => m.eventType === event.type)
 
   if (mappings.length === 0) {
     return []
@@ -166,7 +186,11 @@ async function getIntegrationTargets(
   for (const m of mappings) {
     // Apply board filter — match if any event board overlaps with filter
     const filters = m.filters as { boardIds?: string[] } | null
-    if (filters?.boardIds?.length && boardIds.length > 0 && !boardIds.some((id) => filters.boardIds!.includes(id))) {
+    if (
+      filters?.boardIds?.length &&
+      boardIds.length > 0 &&
+      !boardIds.some((id) => filters.boardIds!.includes(id))
+    ) {
       continue
     }
 
@@ -611,10 +635,19 @@ async function getWebhookTargets(event: EventData): Promise<HookTarget[]> {
   }
 
   try {
-    // Get all active, non-deleted webhooks (we filter in JS for simplicity)
-    const activeWebhooks = await db.query.webhooks.findMany({
-      where: and(eq(webhooks.status, 'active'), isNull(webhooks.deletedAt)),
-    })
+    // Get all active, non-deleted webhooks from cache or DB (filter in JS)
+    let activeWebhooks = await cacheGet<(typeof webhooks.$inferSelect)[]>(
+      CACHE_KEYS.ACTIVE_WEBHOOKS
+    )
+    if (activeWebhooks) {
+      console.log(`[Targets] Active webhooks: cache hit (${activeWebhooks.length} webhooks)`)
+    } else {
+      activeWebhooks = await db.query.webhooks.findMany({
+        where: and(eq(webhooks.status, 'active'), isNull(webhooks.deletedAt)),
+      })
+      console.log(`[Targets] Active webhooks: cache miss, fetched ${activeWebhooks.length} from DB`)
+      await cacheSet(CACHE_KEYS.ACTIVE_WEBHOOKS, activeWebhooks, 300)
+    }
 
     if (activeWebhooks.length === 0) {
       return []

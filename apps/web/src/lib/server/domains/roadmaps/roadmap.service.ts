@@ -143,7 +143,6 @@ export async function deleteRoadmap(id: RoadmapId): Promise<void> {
  * Get a roadmap by ID
  */
 export async function getRoadmap(id: RoadmapId): Promise<Roadmap> {
-  console.log(`[domain:roadmaps] getRoadmap: id=${id}`)
   const roadmap = await db.query.roadmaps.findFirst({ where: eq(roadmaps.id, id) })
 
   if (!roadmap) {
@@ -157,7 +156,6 @@ export async function getRoadmap(id: RoadmapId): Promise<Roadmap> {
  * Get a roadmap by slug
  */
 export async function getRoadmapBySlug(slug: string): Promise<Roadmap> {
-  console.log(`[domain:roadmaps] getRoadmapBySlug: slug=${slug}`)
   const roadmap = await db.query.roadmaps.findFirst({ where: eq(roadmaps.slug, slug) })
 
   if (!roadmap) {
@@ -171,7 +169,6 @@ export async function getRoadmapBySlug(slug: string): Promise<Roadmap> {
  * List all roadmaps (admin view, excludes soft-deleted)
  */
 export async function listRoadmaps(): Promise<Roadmap[]> {
-  console.log(`[domain:roadmaps] listRoadmaps`)
   return db.query.roadmaps.findMany({
     where: isNull(roadmaps.deletedAt),
     orderBy: [asc(roadmaps.position)],
@@ -182,7 +179,6 @@ export async function listRoadmaps(): Promise<Roadmap[]> {
  * List public roadmaps (for portal view, excludes soft-deleted)
  */
 export async function listPublicRoadmaps(): Promise<Roadmap[]> {
-  console.log(`[domain:roadmaps] listPublicRoadmaps`)
   return db.query.roadmaps.findMany({
     where: and(eq(roadmaps.isPublic, true), isNull(roadmaps.deletedAt)),
     orderBy: [asc(roadmaps.position)],
@@ -404,7 +400,6 @@ export async function getRoadmapPosts(
   roadmapId: RoadmapId,
   options: RoadmapPostsQueryOptions
 ): Promise<RoadmapPostsListResult> {
-  console.log(`[domain:roadmaps] getRoadmapPosts: roadmapId=${roadmapId}`)
   // Verify roadmap exists
   const roadmap = await db.query.roadmaps.findFirst({ where: eq(roadmaps.id, roadmapId) })
   if (!roadmap) {
@@ -480,7 +475,6 @@ export async function getPublicRoadmapPosts(
   roadmapId: RoadmapId,
   options: RoadmapPostsQueryOptions
 ): Promise<RoadmapPostsListResult> {
-  console.log(`[domain:roadmaps] getPublicRoadmapPosts: roadmapId=${roadmapId}`)
   // Verify roadmap exists and is public
   const roadmap = await db.query.roadmaps.findFirst({ where: eq(roadmaps.id, roadmapId) })
   if (!roadmap) {
@@ -555,7 +549,6 @@ export async function getPublicRoadmapPosts(
  * Get all roadmaps a post belongs to
  */
 export async function getPostRoadmaps(postId: PostId): Promise<Roadmap[]> {
-  console.log(`[domain:roadmaps] getPostRoadmaps: postId=${postId}`)
   const entries = await db
     .select({ roadmap: roadmaps })
     .from(postRoadmaps)

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import {
   ArrowPathIcon,
   HashtagIcon,
@@ -39,7 +39,7 @@ import {
   useRemoveMonitoredChannel,
 } from '@/lib/client/mutations'
 import { adminQueries } from '@/lib/client/queries/admin'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchSlackChannelsFn, type SlackChannel } from '@/lib/server/integrations/slack/functions'
 
 // ============================================
@@ -126,28 +126,27 @@ function getBoardSummary(
 }
 
 function useSlackChannels() {
-  const [channels, setChannels] = useState<SlackChannel[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const query = useQuery({
+    queryKey: ['slack-channels'],
+    queryFn: () => fetchSlackChannelsFn({ data: { force: false } }),
+    staleTime: 5 * 60 * 1000, // 5 minutes — matches server-side Dragonfly TTL
+    retry: 1,
+  })
 
-  const fetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await fetchSlackChannelsFn()
-      setChannels(result)
-    } catch {
-      setError('Failed to load channels. Please try again.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const refresh = () => {
+    queryClient.fetchQuery({
+      queryKey: ['slack-channels'],
+      queryFn: () => fetchSlackChannelsFn({ data: { force: true } }),
+    })
+  }
 
-  useEffect(() => {
-    fetch()
-  }, [fetch])
-
-  return { channels, loading, error, refresh: fetch }
+  return {
+    channels: query.data ?? [],
+    loading: query.isLoading || query.isFetching,
+    error: query.isError ? 'Failed to load channels. Please try again.' : null,
+    refresh,
+  }
 }
 
 // ============================================
@@ -175,9 +174,10 @@ function ChannelPicker({
 
   const selected = channels.find((c) => c.id === value)
   const filtered = useMemo(
-    () => search
-      ? channels.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
-      : channels,
+    () =>
+      search
+        ? channels.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
+        : channels,
     [channels, search]
   )
 
@@ -246,9 +246,7 @@ function ChannelPicker({
                 key={channel.id}
                 type="button"
                 className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors ${
-                  channel.id === value
-                    ? 'bg-accent text-accent-foreground'
-                    : 'hover:bg-muted/50'
+                  channel.id === value ? 'bg-accent text-accent-foreground' : 'hover:bg-muted/50'
                 }`}
                 onClick={() => {
                   onSelect(channel.id)

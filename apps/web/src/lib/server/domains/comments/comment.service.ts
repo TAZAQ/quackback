@@ -474,7 +474,6 @@ export async function deleteComment(
 export async function getCommentById(
   id: CommentId
 ): Promise<Comment & { authorName: string | null; authorEmail: string | null }> {
-  console.log(`[domain:comments] getCommentById: id=${id}`)
   const comment = await db.query.comments.findFirst({
     where: eq(comments.id, id),
     with: {
@@ -524,7 +523,6 @@ export async function getCommentsByPost(
   postId: PostId,
   principalId?: PrincipalId
 ): Promise<CommentThread[]> {
-  console.log(`[domain:comments] getCommentsByPost: postId=${postId}`)
   // Verify post exists
   const post = await db.query.posts.findFirst({ where: eq(posts.id, postId) })
   if (!post) {

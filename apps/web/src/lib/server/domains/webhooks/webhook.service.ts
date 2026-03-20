@@ -9,6 +9,7 @@ import { db, webhooks, eq, and, isNull, sql } from '@/lib/server/db'
 import { createId, type PrincipalId, type WebhookId } from '@quackback/ids'
 import { encryptWebhookSecret } from './encryption'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
+import { cacheDel, CACHE_KEYS } from '@/lib/server/redis'
 import { isValidWebhookUrl } from '@/lib/server/events/integrations/webhook/constants'
 
 /** Maximum webhooks per workspace */
@@ -109,6 +110,8 @@ export async function createWebhook(
     })
     .returning()
 
+  await cacheDel(CACHE_KEYS.ACTIVE_WEBHOOKS)
+
   return {
     webhook: mapWebhook(webhook),
     secret,
@@ -119,7 +122,6 @@ export async function createWebhook(
  * List all webhooks (excludes soft-deleted)
  */
 export async function listWebhooks(): Promise<Webhook[]> {
-  console.log(`[domain:webhooks] listWebhooks`)
   const result = await db.query.webhooks.findMany({
     where: isNull(webhooks.deletedAt),
     orderBy: (t, { desc }) => [desc(t.createdAt)],
@@ -132,7 +134,6 @@ export async function listWebhooks(): Promise<Webhook[]> {
  * Get a webhook by ID
  */
 export async function getWebhookById(id: WebhookId): Promise<Webhook> {
-  console.log(`[domain:webhooks] getWebhookById: id=${id}`)
   const webhook = await db.query.webhooks.findFirst({
     where: eq(webhooks.id, id),
   })
@@ -190,6 +191,7 @@ export async function updateWebhook(id: WebhookId, input: UpdateWebhookInput): P
     throw new NotFoundError('WEBHOOK_NOT_FOUND', 'Webhook not found')
   }
 
+  await cacheDel(CACHE_KEYS.ACTIVE_WEBHOOKS)
   return mapWebhook(webhook)
 }
 
@@ -209,6 +211,8 @@ export async function deleteWebhook(id: WebhookId): Promise<void> {
   if (!deleted) {
     throw new NotFoundError('WEBHOOK_NOT_FOUND', 'Webhook not found')
   }
+
+  await cacheDel(CACHE_KEYS.ACTIVE_WEBHOOKS)
 }
 
 /**
@@ -236,6 +240,8 @@ export async function rotateWebhookSecret(
   if (!webhook) {
     throw new NotFoundError('WEBHOOK_NOT_FOUND', 'Webhook not found')
   }
+
+  await cacheDel(CACHE_KEYS.ACTIVE_WEBHOOKS)
 
   return {
     webhook: mapWebhook(webhook),

@@ -84,7 +84,6 @@ export async function getNotificationsForMember(
   principalId: PrincipalId,
   options: GetNotificationsOptions = {}
 ): Promise<NotificationListResult> {
-  console.log(`[domain:notifications] getNotificationsForMember: principalId=${principalId}`)
   const { limit = 20, offset = 0, unreadOnly = false } = options
 
   // Build where clause
@@ -167,7 +166,6 @@ export async function getNotificationsForMember(
  * Get unread notification count for a member (optimized for badge display)
  */
 export async function getUnreadCount(principalId: PrincipalId): Promise<number> {
-  console.log(`[domain:notifications] getUnreadCount: principalId=${principalId}`)
   const result = await db
     .select({ count: sql<number>`count(*)::int`.as('count') })
     .from(inAppNotifications)

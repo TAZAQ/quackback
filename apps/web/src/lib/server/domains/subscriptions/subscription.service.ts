@@ -240,7 +240,6 @@ export async function getSubscribersForEvent(
  * Get all subscriptions for a member
  */
 export async function getMemberSubscriptions(principalId: PrincipalId): Promise<Subscription[]> {
-  console.log(`[domain:subscriptions] getMemberSubscriptions: principalId=${principalId}`)
   const rows = await db
     .select({
       id: postSubscriptions.id,
@@ -272,7 +271,6 @@ export async function getMemberSubscriptions(principalId: PrincipalId): Promise<
 export async function getNotificationPreferences(
   principalId: PrincipalId
 ): Promise<NotificationPreferencesData> {
-  console.log(`[domain:subscriptions] getNotificationPreferences: principalId=${principalId}`)
   const prefs = await db.query.notificationPreferences.findFirst({
     where: eq(notificationPreferences.principalId, principalId),
   })

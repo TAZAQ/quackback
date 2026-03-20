@@ -3,24 +3,38 @@
  */
 
 import { WebClient } from '@slack/web-api'
+import { cacheGet, cacheSet, CACHE_KEYS } from '@/lib/server/redis'
+
+type SlackChannelInfo = { id: string; name: string; isPrivate: boolean }
+
+const CACHE_TTL_SECONDS = 300 // 5 minutes
 
 /**
  * List all channels accessible to the bot.
- * Uses cursor-based pagination to fetch every channel, filters out
- * Slack Connect / externally shared channels, and sorts alphabetically.
+ * Results are cached in Dragonfly for 5 minutes to avoid Slack API rate limits.
+ * Pass `force: true` to bypass the cache (e.g. refresh button).
  */
 export async function listSlackChannels(
-  accessToken: string
-): Promise<Array<{ id: string; name: string; isPrivate: boolean }>> {
+  accessToken: string,
+  opts?: { force?: boolean }
+): Promise<SlackChannelInfo[]> {
+  if (!opts?.force) {
+    const cached = await cacheGet<SlackChannelInfo[]>(CACHE_KEYS.SLACK_CHANNELS)
+    if (cached) {
+      console.log('[Slack] Returning cached channel list')
+      return cached
+    }
+  }
+
   const client = new WebClient(accessToken)
-  const channels: Array<{ id: string; name: string; isPrivate: boolean }> = []
+  const channels: SlackChannelInfo[] = []
   let cursor: string | undefined
 
   do {
     const result = await client.conversations.list({
       types: 'public_channel,private_channel',
       exclude_archived: true,
-      limit: 200,
+      limit: 1000,
       cursor,
     })
 
@@ -44,6 +58,11 @@ export async function listSlackChannels(
 
   channels.sort((a, b) => a.name.localeCompare(b.name))
 
+  await cacheSet(CACHE_KEYS.SLACK_CHANNELS, channels, CACHE_TTL_SECONDS)
+
+  console.log(
+    `[Slack] Fetched ${channels.length} channels from API (cached for ${CACHE_TTL_SECONDS}s)`
+  )
   return channels
 }
 

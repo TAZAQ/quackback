@@ -1,4 +1,5 @@
 import { db, eq, settings } from '@/lib/server/db'
+import { cacheGet, cacheSet, cacheDel, CACHE_KEYS } from '@/lib/server/redis'
 import { NotFoundError, InternalError, ValidationError } from '@/lib/shared/errors'
 import { getPublicUrlOrNull, deleteObject } from '@/lib/server/storage/s3'
 import type {
@@ -138,7 +139,6 @@ async function getCustomProviderNames(
 }
 
 export async function getAuthConfig(): Promise<AuthConfig> {
-  console.log(`[domain:settings] getAuthConfig`)
   try {
     const org = await requireSettings()
     return parseJsonConfig(org.authConfig, DEFAULT_AUTH_CONFIG)
@@ -158,6 +158,7 @@ export async function updateAuthConfig(input: UpdateAuthConfigInput): Promise<Au
       .update(settings)
       .set({ authConfig: JSON.stringify(updated) })
       .where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
     return updated
   } catch (error) {
     console.error(`[domain:settings] updateAuthConfig failed:`, error)
@@ -166,7 +167,6 @@ export async function updateAuthConfig(input: UpdateAuthConfigInput): Promise<Au
 }
 
 export async function getPortalConfig(): Promise<PortalConfig> {
-  console.log(`[domain:settings] getPortalConfig`)
   try {
     const org = await requireSettings()
     return parseJsonConfig(org.portalConfig, DEFAULT_PORTAL_CONFIG)
@@ -195,6 +195,7 @@ export async function updatePortalConfig(input: UpdatePortalConfigInput): Promis
       .update(settings)
       .set({ portalConfig: JSON.stringify(updated) })
       .where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
     return updated
   } catch (error) {
     console.error(`[domain:settings] updatePortalConfig failed:`, error)
@@ -203,7 +204,6 @@ export async function updatePortalConfig(input: UpdatePortalConfigInput): Promis
 }
 
 export async function getDeveloperConfig(): Promise<DeveloperConfig> {
-  console.log(`[domain:settings] getDeveloperConfig`)
   try {
     const org = await requireSettings()
     return parseJsonConfig(org.developerConfig, DEFAULT_DEVELOPER_CONFIG)
@@ -225,6 +225,7 @@ export async function updateDeveloperConfig(
       .update(settings)
       .set({ developerConfig: JSON.stringify(updated) })
       .where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
     return updated
   } catch (error) {
     console.error(`[domain:settings] updateDeveloperConfig failed:`, error)
@@ -237,7 +238,6 @@ export async function updateDeveloperConfig(
 // ============================================================================
 
 export async function getWidgetConfig(): Promise<WidgetConfig> {
-  console.log(`[domain:settings] getWidgetConfig`)
   try {
     const org = await requireSettings()
     return parseJsonConfig(org.widgetConfig, DEFAULT_WIDGET_CONFIG)
@@ -257,6 +257,7 @@ export async function updateWidgetConfig(input: UpdateWidgetConfigInput): Promis
       .update(settings)
       .set({ widgetConfig: JSON.stringify(updated) })
       .where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
     return updated
   } catch (error) {
     console.error(`[domain:settings] updateWidgetConfig failed:`, error)
@@ -265,7 +266,6 @@ export async function updateWidgetConfig(input: UpdateWidgetConfigInput): Promis
 }
 
 export async function getPublicWidgetConfig(): Promise<PublicWidgetConfig> {
-  console.log(`[domain:settings] getPublicWidgetConfig`)
   try {
     const org = await requireSettings()
     const config = parseJsonConfig(org.widgetConfig, DEFAULT_WIDGET_CONFIG)
@@ -287,7 +287,6 @@ export function generateWidgetSecret(): string {
 
 /** Get the widget secret (admin only — never expose in TenantSettings) */
 export async function getWidgetSecret(): Promise<string | null> {
-  console.log(`[domain:settings] getWidgetSecret`)
   try {
     const org = await requireSettings()
     return org.widgetSecret ?? null
@@ -304,6 +303,7 @@ export async function regenerateWidgetSecret(): Promise<string> {
     const org = await requireSettings()
     const secret = generateWidgetSecret()
     await db.update(settings).set({ widgetSecret: secret }).where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
     return secret
   } catch (error) {
     console.error(`[domain:settings] regenerateWidgetSecret failed:`, error)
@@ -312,7 +312,6 @@ export async function regenerateWidgetSecret(): Promise<string> {
 }
 
 export async function getBrandingConfig(): Promise<BrandingConfig> {
-  console.log(`[domain:settings] getBrandingConfig`)
   try {
     const org = await requireSettings()
     return parseJsonOrNull<BrandingConfig>(org.brandingConfig) ?? {}
@@ -330,6 +329,7 @@ export async function updateBrandingConfig(config: BrandingConfig): Promise<Bran
       .update(settings)
       .set({ brandingConfig: JSON.stringify(config) })
       .where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
     return config
   } catch (error) {
     console.error(`[domain:settings] updateBrandingConfig failed:`, error)
@@ -338,7 +338,6 @@ export async function updateBrandingConfig(config: BrandingConfig): Promise<Bran
 }
 
 export async function getCustomCss(): Promise<string> {
-  console.log(`[domain:settings] getCustomCss`)
   try {
     const org = await requireSettings()
     return org.customCss ?? ''
@@ -353,6 +352,7 @@ export async function updateCustomCss(css: string): Promise<string> {
   try {
     const org = await requireSettings()
     await db.update(settings).set({ customCss: css }).where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
     return css
   } catch (error) {
     console.error(`[domain:settings] updateCustomCss failed:`, error)
@@ -376,12 +376,13 @@ export async function saveLogoKey(key: string): Promise<{ success: true; key: st
     if (org.logoKey) {
       try {
         await deleteObject(org.logoKey)
-      } catch {
-        // Ignore deletion errors - old file may not exist
+      } catch (err) {
+        console.warn(`[domain:settings] Failed to delete old logo S3 object ${org.logoKey}:`, err)
       }
     }
 
     await db.update(settings).set({ logoKey: key }).where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
 
     return { success: true, key }
   } catch (error) {
@@ -401,12 +402,13 @@ export async function deleteLogoKey(): Promise<{ success: true }> {
     if (org.logoKey) {
       try {
         await deleteObject(org.logoKey)
-      } catch {
-        // Ignore deletion errors
+      } catch (err) {
+        console.warn(`[domain:settings] Failed to delete logo S3 object ${org.logoKey}:`, err)
       }
     }
 
     await db.update(settings).set({ logoKey: null }).where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
 
     return { success: true }
   } catch (error) {
@@ -426,12 +428,16 @@ export async function saveFaviconKey(key: string): Promise<{ success: true; key:
     if (org.faviconKey) {
       try {
         await deleteObject(org.faviconKey)
-      } catch {
-        // Ignore deletion errors
+      } catch (err) {
+        console.warn(
+          `[domain:settings] Failed to delete old favicon S3 object ${org.faviconKey}:`,
+          err
+        )
       }
     }
 
     await db.update(settings).set({ faviconKey: key }).where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
 
     return { success: true, key }
   } catch (error) {
@@ -451,12 +457,13 @@ export async function deleteFaviconKey(): Promise<{ success: true }> {
     if (org.faviconKey) {
       try {
         await deleteObject(org.faviconKey)
-      } catch {
-        // Ignore deletion errors
+      } catch (err) {
+        console.warn(`[domain:settings] Failed to delete favicon S3 object ${org.faviconKey}:`, err)
       }
     }
 
     await db.update(settings).set({ faviconKey: null }).where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
 
     return { success: true }
   } catch (error) {
@@ -476,12 +483,16 @@ export async function saveHeaderLogoKey(key: string): Promise<{ success: true; k
     if (org.headerLogoKey) {
       try {
         await deleteObject(org.headerLogoKey)
-      } catch {
-        // Ignore deletion errors
+      } catch (err) {
+        console.warn(
+          `[domain:settings] Failed to delete old header logo S3 object ${org.headerLogoKey}:`,
+          err
+        )
       }
     }
 
     await db.update(settings).set({ headerLogoKey: key }).where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
 
     return { success: true, key }
   } catch (error) {
@@ -501,12 +512,16 @@ export async function deleteHeaderLogoKey(): Promise<{ success: true }> {
     if (org.headerLogoKey) {
       try {
         await deleteObject(org.headerLogoKey)
-      } catch {
-        // Ignore deletion errors
+      } catch (err) {
+        console.warn(
+          `[domain:settings] Failed to delete header logo S3 object ${org.headerLogoKey}:`,
+          err
+        )
       }
     }
 
     await db.update(settings).set({ headerLogoKey: null }).where(eq(settings.id, org.id))
+    await invalidateSettingsCache()
 
     return { success: true }
   } catch (error) {
@@ -531,6 +546,7 @@ export async function updateHeaderDisplayMode(mode: string): Promise<string> {
       .where(eq(settings.id, org.id))
       .returning()
 
+    await invalidateSettingsCache()
     return updated?.headerDisplayMode || 'logo_and_name'
   } catch (error) {
     console.error(`[domain:settings] updateHeaderDisplayMode failed:`, error)
@@ -550,6 +566,7 @@ export async function updateHeaderDisplayName(name: string | null): Promise<stri
       .where(eq(settings.id, org.id))
       .returning()
 
+    await invalidateSettingsCache()
     return updated?.headerDisplayName ?? null
   } catch (error) {
     console.error(`[domain:settings] updateHeaderDisplayName failed:`, error)
@@ -569,6 +586,7 @@ export async function updateWorkspaceName(name: string): Promise<string> {
       .set({ name: sanitizedName })
       .where(eq(settings.id, org.id))
       .returning()
+    await invalidateSettingsCache()
     return updated?.name ?? sanitizedName
   } catch (error) {
     console.error(`[domain:settings] updateWorkspaceName failed:`, error)
@@ -577,7 +595,6 @@ export async function updateWorkspaceName(name: string): Promise<string> {
 }
 
 export async function getPublicAuthConfig(): Promise<PublicAuthConfig> {
-  console.log(`[domain:settings] getPublicAuthConfig`)
   try {
     const org = await requireSettings()
     const authConfig = parseJsonConfig(org.authConfig, DEFAULT_AUTH_CONFIG)
@@ -597,7 +614,6 @@ export async function getPublicAuthConfig(): Promise<PublicAuthConfig> {
 }
 
 export async function getPublicPortalConfig(): Promise<PublicPortalConfig> {
-  console.log(`[domain:settings] getPublicPortalConfig`)
   try {
     const org = await requireSettings()
     const portalConfig = parseJsonConfig(org.portalConfig, DEFAULT_PORTAL_CONFIG)
@@ -653,9 +669,19 @@ export interface TenantSettings {
   faviconData: { url: string } | null
 }
 
+export async function invalidateSettingsCache(): Promise<void> {
+  console.log(`[domain:settings] Invalidating settings cache`)
+  await cacheDel(CACHE_KEYS.TENANT_SETTINGS)
+}
+
 export async function getTenantSettings(): Promise<TenantSettings | null> {
-  console.log(`[domain:settings] getTenantSettings`)
   try {
+    const cached = await cacheGet<TenantSettings>(CACHE_KEYS.TENANT_SETTINGS)
+    if (cached) {
+      console.log(`[domain:settings] getTenantSettings: cache hit`)
+      return cached
+    }
+
     const org = await db.query.settings.findFirst()
     if (!org) return null
 
@@ -692,7 +718,7 @@ export async function getTenantSettings(): Promise<TenantSettings | null> {
       headerDisplayName: org.headerDisplayName,
     }
 
-    return {
+    const result: TenantSettings = {
       settings: org,
       name: org.name,
       slug: org.slug,
@@ -719,6 +745,9 @@ export async function getTenantSettings(): Promise<TenantSettings | null> {
       brandingData,
       faviconData: brandingData.faviconUrl ? { url: brandingData.faviconUrl } : null,
     }
+
+    await cacheSet(CACHE_KEYS.TENANT_SETTINGS, result, 300)
+    return result
   } catch (error) {
     console.error(`[domain:settings] getTenantSettings failed:`, error)
     wrapDbError('fetch settings with all configs', error)
