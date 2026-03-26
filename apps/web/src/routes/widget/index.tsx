@@ -181,7 +181,16 @@ function WidgetPage() {
         <WidgetChangelogDetail entryId={selectedChangelogId} />
       )}
 
-      {view === 'home' && (
+      {/* Keep home mounted (hidden) when viewing post detail so form state is preserved */}
+      <div
+        className={
+          view === 'home' || view === 'post-detail'
+            ? view === 'home'
+              ? 'flex flex-col h-full'
+              : 'hidden'
+            : 'hidden'
+        }
+      >
         <WidgetHome
           initialPosts={allPosts}
           statuses={statuses}
@@ -191,7 +200,7 @@ function WidgetPage() {
           anonymousVotingEnabled={features.anonymousVoting}
           anonymousPostingEnabled={features.anonymousPosting}
         />
-      )}
+      </div>
 
       {view === 'post-detail' && selectedPostId && (
         <WidgetPostDetail

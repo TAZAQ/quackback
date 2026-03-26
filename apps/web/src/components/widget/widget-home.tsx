@@ -68,6 +68,7 @@ function WidgetPostRow({
   post,
   statusMap,
   showBoard,
+  compact,
   canVote,
   ensureSession,
   onAuthRequired,
@@ -76,6 +77,7 @@ function WidgetPostRow({
   post: WidgetPost
   statusMap: Map<string, StatusInfo>
   showBoard?: boolean
+  compact?: boolean
   canVote: boolean
   ensureSession: () => Promise<boolean>
   onAuthRequired?: () => void
@@ -84,20 +86,20 @@ function WidgetPostRow({
   const status = post.statusId ? (statusMap.get(post.statusId) ?? null) : null
   return (
     <div
-      className="flex items-center gap-2 rounded-lg hover:bg-muted/30 transition-colors px-2 py-1.5 cursor-pointer"
+      className={`flex items-center gap-2 rounded-lg hover:bg-muted/30 transition-colors cursor-pointer ${compact ? 'px-1.5 py-1' : 'px-2 py-1.5'}`}
       onClick={onSelect}
     >
       <div onClick={(e) => e.stopPropagation()} className="shrink-0">
         <WidgetVoteButton
           postId={post.id as PostId}
           voteCount={post.voteCount}
+          compact={compact}
           onBeforeVote={canVote ? ensureSession : undefined}
           onAuthRequired={!canVote ? onAuthRequired : undefined}
         />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground line-clamp-1">{post.title}</p>
-        <div className="flex items-center gap-1.5 mt-0.5">
+        <div className="flex items-center gap-1.5">
           {status && (
             <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
               <span
@@ -114,6 +116,11 @@ function WidgetPostRow({
             </span>
           )}
         </div>
+        <p
+          className={`font-medium text-foreground line-clamp-1 ${compact ? 'text-xs' : 'text-sm'}`}
+        >
+          {post.title}
+        </p>
       </div>
     </div>
   )
@@ -293,11 +300,11 @@ export function WidgetHome({
   const canSubmitForm = title.trim() && (!needsEmail || email.trim()) && (canPost || needsEmail)
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col h-full min-w-0 overflow-hidden">
+    <form onSubmit={handleSubmit} className="flex flex-col h-full">
       <ScrollArea className="flex-1 min-h-0">
-        <div className="px-3 pt-2 pb-3 min-w-0">
+        <div className="px-3 pt-2 pb-3">
           <motion.div
-            className="rounded-lg border border-border bg-card overflow-hidden min-w-0"
+            className="rounded-lg border border-border bg-card overflow-hidden"
             initial={false}
             animate={{
               boxShadow: expanded
@@ -413,6 +420,7 @@ export function WidgetHome({
                             key={post.id}
                             post={post}
                             statusMap={statusMap}
+                            compact
                             canVote={canVote}
                             ensureSession={ensureSession}
                             onAuthRequired={() => handleAuthRequired(post.id)}
@@ -438,21 +446,21 @@ export function WidgetHome({
                     className="border-t border-border bg-muted/30"
                   >
                     {needsEmail && (
-                      <div className="px-3 pt-2 pb-1 flex gap-2 min-w-0 overflow-hidden">
+                      <div className="px-3 pt-2 pb-1 flex gap-2">
                         <input
                           type="email"
                           required
                           placeholder="Your email"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
-                          className={`flex-[3_1_0%] min-w-0 ${identityInputCls}`}
+                          className={`flex-1 min-w-0 ${identityInputCls}`}
                         />
                         <input
                           type="text"
                           placeholder="Name (optional)"
                           value={name}
                           onChange={(e) => setName(e.target.value)}
-                          className={`flex-[2_1_0%] min-w-0 ${identityInputCls}`}
+                          className={`w-28 shrink-0 ${identityInputCls}`}
                         />
                       </div>
                     )}
