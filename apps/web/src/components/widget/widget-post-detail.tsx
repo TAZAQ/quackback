@@ -10,6 +10,7 @@ import { PostContent } from '@/components/public/post-content'
 import { fetchPublicPostDetail } from '@/lib/server/functions/portal'
 import { createCommentFn } from '@/lib/server/functions/comments'
 import { getWidgetAuthHeaders, generateOneTimeToken } from '@/lib/client/widget-auth'
+import { buildPortalUrl } from './build-portal-url'
 import { widgetQueryKeys } from '@/lib/client/hooks/use-widget-vote'
 import type { PublicPostDetailView } from '@/lib/client/queries/portal-detail'
 import { WidgetVoteButton } from './widget-vote-button'
@@ -70,12 +71,16 @@ export function WidgetPostDetail({
 
   const handleViewOnPortal = useCallback(async () => {
     if (!post) return
-    let url = `${window.location.origin}/b/${post.board.slug}/posts/${post.id}`
-    // Generate a one-time token to transfer the session to the portal
-    const ott = await generateOneTimeToken()
-    if (ott) url += `?ott=${encodeURIComponent(ott)}`
+    const ott = isIdentified ? await generateOneTimeToken() : null
+    const url = buildPortalUrl({
+      origin: window.location.origin,
+      boardSlug: post.board.slug,
+      postId: post.id,
+      isIdentified,
+      ott,
+    })
     window.parent.postMessage({ type: 'quackback:navigate', url }, '*')
-  }, [post])
+  }, [post, isIdentified])
 
   /** Submit a comment (root or reply). Used by both the top form and inline reply forms. */
   const submitComment = useCallback(

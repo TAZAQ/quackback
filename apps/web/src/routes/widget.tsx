@@ -1,12 +1,19 @@
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { setResponseHeader } from '@tanstack/react-start/server'
+import { getRequestHeaders, setResponseHeader } from '@tanstack/react-start/server'
 import { generateThemeCSS, getGoogleFontsUrl } from '@/lib/shared/theme'
 import { WidgetAuthProvider } from '@/components/widget/widget-auth-provider'
+import { extractSessionTokenFromCookie } from '@/lib/server/functions/portal-session-token'
 
 const setIframeHeaders = createServerFn({ method: 'GET' }).handler(async () => {
   setResponseHeader('Content-Security-Policy', 'frame-ancestors *')
   setResponseHeader('X-Frame-Options', 'ALLOWALL')
+})
+
+/** Extract the signed session cookie for direct widget session reuse (same-origin only). */
+export const getPortalSessionToken = createServerFn({ method: 'GET' }).handler(async () => {
+  const cookie = getRequestHeaders().get('cookie') ?? ''
+  return extractSessionTokenFromCookie(cookie)
 })
 
 export const Route = createFileRoute('/widget')({
@@ -28,10 +35,9 @@ export const Route = createFileRoute('/widget')({
     const hasThemeConfig = brandingConfig.light || brandingConfig.dark
     const themeStyles = hasThemeConfig ? generateThemeCSS(brandingConfig) : ''
 
-    // If user is logged into the portal, pass their identity (not the token)
-    // to the widget so it can exchange for a bearer token client-side.
-    // The token is NOT serialized into the HTML — the client fetches it via
-    // a server function that reads the session cookie.
+    // If user is logged into the portal (same-origin), extract the signed
+    // session cookie so the widget can reuse it directly as a Bearer token.
+    // This prevents duplicate anonymous users and bypasses HMAC requirements.
     const portalUser =
       session?.user && !session.user.isAnonymous
         ? {
@@ -42,6 +48,13 @@ export const Route = createFileRoute('/widget')({
           }
         : null
 
+    // Extract the signed session cookie during SSR — this is the only point
+    // where the cookie is available in cross-origin iframes (SameSite=Lax
+    // sends cookies for the initial iframe navigation but NOT for subsequent
+    // fetch/XHR from within the iframe). The token in the iframe's serialized
+    // HTML is safe: cross-origin parent pages cannot read iframe content.
+    const portalSessionToken = session?.user ? await getPortalSessionToken() : null
+
     return {
       org,
       brandingData,
@@ -50,6 +63,7 @@ export const Route = createFileRoute('/widget')({
       customCss,
       googleFontsUrl: getGoogleFontsUrl(brandingConfig),
       portalUser,
+      portalSessionToken,
       hmacRequired: settings?.publicWidgetConfig?.hmacRequired ?? false,
     }
   },
@@ -58,10 +72,15 @@ export const Route = createFileRoute('/widget')({
 })
 
 function WidgetLayout() {
-  const { themeStyles, customCss, googleFontsUrl, portalUser, hmacRequired } = Route.useLoaderData()
+  const { themeStyles, customCss, googleFontsUrl, portalUser, portalSessionToken, hmacRequired } =
+    Route.useLoaderData()
 
   return (
-    <WidgetAuthProvider portalUser={portalUser} hmacRequired={hmacRequired}>
+    <WidgetAuthProvider
+      portalUser={portalUser}
+      portalSessionToken={portalSessionToken}
+      hmacRequired={hmacRequired}
+    >
       {googleFontsUrl && <link rel="stylesheet" href={googleFontsUrl} />}
       {themeStyles && <style dangerouslySetInnerHTML={{ __html: themeStyles }} />}
       {customCss && <style dangerouslySetInnerHTML={{ __html: customCss }} />}

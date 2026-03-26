@@ -7,6 +7,7 @@ import { db, user, session, principal, eq, and, gt } from '@/lib/server/db'
 import { getWidgetConfig, getWidgetSecret } from '@/lib/server/domains/settings/settings.widget'
 import { getAllUserVotedPostIds } from '@/lib/server/domains/posts/post.public'
 import { getPublicUrlOrNull } from '@/lib/server/storage/s3'
+import { resolveAndMergeAnonymousToken } from '@/lib/server/auth/identify-merge'
 
 // Accept either legacy HMAC fields or a JWT ssoToken
 const identifySchema = z
@@ -20,6 +21,8 @@ const identifySchema = z
     avatarURL: z.string().url().optional(),
     created: z.string().optional(),
     hash: z.string().optional(),
+    // Anonymous→identified merge: previous widget session token
+    previousToken: z.string().optional(),
   })
   .refine((data) => data.ssoToken || (data.id && data.email), {
     message: 'Either ssoToken or (id + email) is required',
@@ -250,8 +253,25 @@ export const Route = createFileRoute('/api/widget/identify')({
           principalRecord = created
         }
 
-        // Find/create session and fetch voted posts in parallel
         const principalId = principalRecord.id as PrincipalId
+
+        // If the widget had a previous anonymous session, merge its activity.
+        // Ownership check: the caller must send the previousToken as both a body
+        // field AND the Authorization Bearer header to prove they own the session.
+        if (body.previousToken) {
+          const authHeader = request.headers.get('authorization') ?? ''
+          const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+          if (bearerToken && bearerToken === body.previousToken) {
+            await resolveAndMergeAnonymousToken({
+              previousToken: body.previousToken,
+              targetPrincipalId: principalId,
+              targetDisplayName: userRecord.name || 'User',
+            })
+          }
+        }
+
+        // Find/create session and fetch voted posts in parallel
+        // (voted posts include any merged anonymous votes)
         const [sessionToken, votedPostIdSet] = await Promise.all([
           findOrCreateSession(userId, request),
           getAllUserVotedPostIds(principalId),
