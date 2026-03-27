@@ -51,7 +51,7 @@ function FeedbackLayout() {
 
   return (
     <div className="flex h-full flex-col">
-      <TabStrip tabs={tabs} />
+      {tabs.length > 1 && <TabStrip tabs={tabs} />}
       <div className="flex-1 min-h-0">
         <Outlet />
       </div>
