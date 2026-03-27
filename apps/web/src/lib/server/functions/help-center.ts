@@ -37,7 +37,10 @@ import {
   listArticlesSchema,
   listPublicArticlesSchema,
   publishArticleSchema,
+  unpublishArticleSchema,
   articleFeedbackSchema,
+  getCategoryBySlugSchema,
+  getArticleBySlugSchema,
 } from '@/lib/shared/schemas/help-center'
 import { z } from 'zod'
 import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils'
@@ -46,7 +49,9 @@ import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils'
 // Helper: serialize article dates
 // ============================================================================
 
-function serializeArticle(article: Awaited<ReturnType<typeof getArticleById>>) {
+function serializeArticle<T extends { createdAt: Date; updatedAt: Date; publishedAt: Date | null }>(
+  article: T
+) {
   return {
     ...article,
     createdAt: toIsoString(article.createdAt),
@@ -55,7 +60,7 @@ function serializeArticle(article: Awaited<ReturnType<typeof getArticleById>>) {
   }
 }
 
-function serializeCategory(cat: Awaited<ReturnType<typeof getCategoryById>>) {
+function serializeCategory<T extends { createdAt: Date; updatedAt: Date }>(cat: T) {
   return {
     ...cat,
     createdAt: toIsoString(cat.createdAt),
@@ -72,20 +77,14 @@ export const listCategoriesFn = createServerFn({ method: 'GET' })
   .handler(async () => {
     await requireAuth({ roles: ['admin', 'member'] })
     const categories = await listCategories()
-    return categories.map((cat) => ({
-      ...serializeCategory(cat),
-      articleCount: cat.articleCount,
-    }))
+    return categories.map(serializeCategory)
   })
 
 export const listPublicCategoriesFn = createServerFn({ method: 'GET' })
   .inputValidator(z.object({}))
   .handler(async () => {
     const categories = await listPublicCategories()
-    return categories.map((cat) => ({
-      ...serializeCategory(cat),
-      articleCount: cat.articleCount,
-    }))
+    return categories.map(serializeCategory)
   })
 
 export const getCategoryFn = createServerFn({ method: 'GET' })
@@ -96,10 +95,8 @@ export const getCategoryFn = createServerFn({ method: 'GET' })
     return serializeCategory(category)
   })
 
-const getPublicCategoryBySlugSchema = z.object({ slug: z.string().min(1) })
-
 export const getPublicCategoryBySlugFn = createServerFn({ method: 'GET' })
-  .inputValidator(getPublicCategoryBySlugSchema)
+  .inputValidator(getCategoryBySlugSchema)
   .handler(async ({ data }) => {
     const category = await getCategoryBySlug(data.slug)
     return serializeCategory(category)
@@ -162,10 +159,8 @@ export const getArticleFn = createServerFn({ method: 'GET' })
     return serializeArticle(article)
   })
 
-const getPublicArticleBySlugSchema = z.object({ slug: z.string().min(1) })
-
 export const getPublicArticleBySlugFn = createServerFn({ method: 'GET' })
-  .inputValidator(getPublicArticleBySlugSchema)
+  .inputValidator(getArticleBySlugSchema)
   .handler(async ({ data }) => {
     const article = await getPublicArticleBySlug(data.slug)
     return serializeArticle(article)
@@ -205,7 +200,7 @@ export const publishArticleFn = createServerFn({ method: 'POST' })
   })
 
 export const unpublishArticleFn = createServerFn({ method: 'POST' })
-  .inputValidator(publishArticleSchema)
+  .inputValidator(unpublishArticleSchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin'] })
     const article = await unpublishArticle(data.id as HelpCenterArticleId)
