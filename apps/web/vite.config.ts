@@ -37,6 +37,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: Number(process.env.PORT || 3000),
+      cors: mode === 'development',
       allowedHosts: true,
       hmr: {
         overlay: false,
