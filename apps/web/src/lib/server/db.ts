@@ -241,9 +241,6 @@ export {
   // Types/constants
   REACTION_EMOJIS,
   USE_CASE_TYPES,
-  // Client functions
-  createDb,
-  getMigrationDb,
 } from '@quackback/db'
 
 // Re-export schema types not covered by @quackback/db/types
