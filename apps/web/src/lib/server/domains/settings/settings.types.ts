@@ -318,3 +318,41 @@ export interface PublicPortalConfig {
   /** Display name overrides for generic OAuth providers (e.g. custom-oidc → "Okta") */
   customProviderNames?: Record<string, string>
 }
+
+// =============================================================================
+// Feature Flags (Experimental features)
+// =============================================================================
+
+/**
+ * Feature flags for experimental/in-development features.
+ * New flags default to false. When a feature is ready for rollout,
+ * enable it via migration. Eventually remove the flag entirely.
+ */
+export interface FeatureFlags {
+  /** Analytics dashboard in admin panel */
+  analytics: boolean
+  /** Help center knowledge base */
+  helpCenter: boolean
+}
+
+export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
+  analytics: false,
+  helpCenter: false,
+}
+
+/**
+ * Feature flag metadata for the admin UI
+ */
+export const FEATURE_FLAG_REGISTRY: Record<
+  keyof FeatureFlags,
+  { label: string; description: string }
+> = {
+  analytics: {
+    label: 'Analytics Dashboard',
+    description: 'View feedback trends, top posts, and engagement metrics from the admin panel.',
+  },
+  helpCenter: {
+    label: 'Help Center',
+    description: 'Create and manage a knowledge base with categories and articles for your users.',
+  },
+}

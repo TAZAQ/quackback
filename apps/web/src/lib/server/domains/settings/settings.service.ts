@@ -13,12 +13,14 @@ import type {
   DeveloperConfig,
   UpdateDeveloperConfigInput,
   PublicWidgetConfig,
+  FeatureFlags,
 } from './settings.types'
 import {
   DEFAULT_AUTH_CONFIG,
   DEFAULT_PORTAL_CONFIG,
   DEFAULT_DEVELOPER_CONFIG,
   DEFAULT_WIDGET_CONFIG,
+  DEFAULT_FEATURE_FLAGS,
 } from './settings.types'
 import {
   parseJsonConfig,
@@ -252,6 +254,8 @@ export interface TenantSettings {
   publicPortalConfig: PublicPortalConfig
   /** Public widget config (no secret, safe for client) */
   publicWidgetConfig: PublicWidgetConfig
+  /** Feature flags for experimental features */
+  featureFlags: FeatureFlags
   brandingData: SettingsBrandingData
   faviconData: { url: string } | null
 }
@@ -273,6 +277,11 @@ export async function getTenantSettings(): Promise<TenantSettings | null> {
     const developerConfig = parseJsonConfig(org.developerConfig, DEFAULT_DEVELOPER_CONFIG)
 
     const widgetConfig = parseJsonConfig(org.widgetConfig, DEFAULT_WIDGET_CONFIG)
+
+    const featureFlags: FeatureFlags = {
+      ...DEFAULT_FEATURE_FLAGS,
+      ...(org.featureFlags ? JSON.parse(org.featureFlags) : {}),
+    }
 
     const [configuredTypes, portalPassthroughKeys] = await Promise.all([
       getConfiguredAuthTypes(),
@@ -326,6 +335,7 @@ export async function getTenantSettings(): Promise<TenantSettings | null> {
         tabs: widgetConfig.tabs,
         hmacRequired: widgetConfig.identifyVerification ?? false,
       },
+      featureFlags,
       brandingData,
       faviconData: brandingData.faviconUrl ? { url: brandingData.faviconUrl } : null,
     }
@@ -339,3 +349,39 @@ export async function getTenantSettings(): Promise<TenantSettings | null> {
 }
 
 // ============================================================================
+// Feature Flags
+// ============================================================================
+
+/**
+ * Get current feature flags, merged with defaults
+ */
+export async function getFeatureFlags(): Promise<FeatureFlags> {
+  const settings = await getTenantSettings()
+  return settings?.featureFlags ?? DEFAULT_FEATURE_FLAGS
+}
+
+/**
+ * Check if a specific feature flag is enabled
+ */
+export async function isFeatureEnabled(flag: keyof FeatureFlags): Promise<boolean> {
+  const flags = await getFeatureFlags()
+  return flags[flag] ?? false
+}
+
+/**
+ * Update feature flags (partial update, merges with existing)
+ */
+export async function updateFeatureFlags(input: Partial<FeatureFlags>): Promise<FeatureFlags> {
+  const org = await requireSettings()
+  const current: FeatureFlags = {
+    ...DEFAULT_FEATURE_FLAGS,
+    ...(org.featureFlags ? JSON.parse(org.featureFlags) : {}),
+  }
+  const updated = { ...current, ...input }
+  await db
+    .update(settings)
+    .set({ featureFlags: JSON.stringify(updated) })
+    .where(eq(settings.id, org.id))
+  await invalidateSettingsCache()
+  return updated
+}
