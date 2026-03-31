@@ -517,7 +517,7 @@ export function buildWidgetSDK(baseUrl: string, theme?: WidgetTheme): string {
 
   // Replay queued commands
   for (var i = 0; i < queue.length; i++) {
-    dispatch(queue[i][0], queue[i][1]);
+    dispatch(queue[i][0], queue[i][1], queue[i][2]);
   }
 
   // Listen for responsive changes

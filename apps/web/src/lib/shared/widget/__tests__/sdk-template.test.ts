@@ -52,6 +52,11 @@ describe('buildWidgetSDK', () => {
     expect(result).toContain('Quackback.q')
   })
 
+  it('should replay queued commands with the third argument', () => {
+    const result = buildWidgetSDK('https://feedback.acme.com')
+    expect(result).toContain('dispatch(queue[i][0], queue[i][1], queue[i][2]);')
+  })
+
   it('should set correct iframe sandbox attributes', () => {
     const result = buildWidgetSDK('https://feedback.acme.com')
     expect(result).toContain('allow-scripts allow-forms allow-same-origin allow-popups')
